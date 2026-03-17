@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: onboardiq-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://your-frontend.vercel.app,http://localhost:5173
+      - key: PYTHON_VERSION
+        value: "3.11.9"

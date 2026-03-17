@@ -1,0 +1,41 @@
+# ==============================
+# OnboardIQ — Root .gitignore
+# ==============================
+
+# Environment
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Database & uploads
+chroma_db/
+uploads/
+*.db
+
+# Logs & feedback
+*.log
+feedback/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
