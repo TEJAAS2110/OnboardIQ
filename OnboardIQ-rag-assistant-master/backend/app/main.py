@@ -181,90 +181,44 @@ def get_stats():
     }
 
 
-# ===================== Demo-mode fallback routes =====================
-# These are only used when the RAG pipeline fails to initialise.
-# They mirror the same endpoints so the frontend always works.
-
-from pydantic import BaseModel
-from typing import List
-import shutil
-
-
-class _DemoChatRequest(BaseModel):
-    query: str
-    conversation_history: list = []
-    top_k: int = 5
-
-
-class _DemoChatResponse(BaseModel):
-    answer: str
-    citations: List[dict] = []
-    confidence: float = 0.85
-    sources_used: int = 0
-    retrieved_chunks: int = 0
-    query: str
-
-
-_demo_documents: list = []
-
-
-@app.post("/documents/upload")
-async def demo_upload(file: "UploadFile" = None):
-    """Demo upload — saves file but doesn't process it."""
-    from fastapi import UploadFile, File
-
-    if DEMO_MODE or ingestion_pipeline is None:
-        # simple file save
-        os.makedirs("uploads", exist_ok=True)
-        if file:
-            path = f"uploads/{file.filename}"
-            with open(path, "wb") as buf:
-                shutil.copyfileobj(file.file, buf)
-            _demo_documents.append({"file_name": file.filename, "file_type": file.filename.split(".")[-1], "chunk_count": 5})
-            return {"success": True, "file_name": file.filename, "chunks_created": 5, "total_chars": 1000}
-        return {"success": False, "error": "No file provided"}
-    # If not demo mode, the real router handles this path
-    return {"success": False, "error": "Route should be handled by documents router"}
-
-
-@app.get("/documents/list")
-def demo_list_documents():
-    if DEMO_MODE or ingestion_pipeline is None:
-        return {
-            "total_documents": len(_demo_documents),
-            "total_chunks": len(_demo_documents) * 5,
-            "documents": _demo_documents,
-        }
-    return {"total_documents": 0, "total_chunks": 0, "documents": []}
-
-
-@app.post("/chat/query")
-def demo_chat_query(request: _DemoChatRequest):
-    if DEMO_MODE or ingestion_pipeline is None:
-        return _DemoChatResponse(
-            answer=f"[DEMO MODE] I received your question: '{request.query}'. "
-            "To get real answers, set OPENAI_API_KEY and upload documents.",
-            confidence=0.0,
-            sources_used=0,
-            retrieved_chunks=0,
-            query=request.query,
-        )
-    return {"error": "Route should be handled by chat router"}
-
-
-@app.post("/chat/feedback")
-def demo_feedback(data: dict):
-    return {"success": True, "message": "Feedback received"}
-
-
-# ===================== Mount real routers (if pipeline loaded) =====================
-# Routers are imported at module level so they're always available.
-# The routes inside them check their injected dependencies.
+# ===================== Mount API routers =====================
+# Routers are always mounted. If the pipeline isn't initialized,
+# the endpoints return helpful error messages via their dependency checks.
 try:
     from app.api.chat import router as chat_router
     from app.api.documents import router as documents_router
 
     app.include_router(chat_router)
     app.include_router(documents_router)
+    logger.info("API routers mounted")
 except ImportError:
-    logger.warning("Could not import API routers — demo mode only")
+    logger.warning("Could not import API routers — only root endpoints available")
+
+    # Minimal fallback endpoints when routers can't be imported
+    from pydantic import BaseModel
+    from typing import List
+
+    class _DemoChatRequest(BaseModel):
+        query: str
+        conversation_history: list = []
+        top_k: int = 5
+
+    @app.post("/chat/query")
+    def demo_chat(request: _DemoChatRequest):
+        return {
+            "answer": f"[DEMO] Pipeline not available. Query: '{request.query}'",
+            "citations": [],
+            "confidence": 0.0,
+            "sources_used": 0,
+            "retrieved_chunks": 0,
+            "query": request.query,
+        }
+
+    @app.get("/documents/list")
+    def demo_list():
+        return {"total_documents": 0, "total_chunks": 0, "documents": []}
+
+    @app.post("/chat/feedback")
+    def demo_feedback(data: dict):
+        return {"success": True, "message": "Feedback received"}
+
