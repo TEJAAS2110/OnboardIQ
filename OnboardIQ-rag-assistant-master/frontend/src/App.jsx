@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
-import ChatInterface from './components/Chat/ChatInterface'
+import ChatInterface from './components/chat/ChatInterface'
 import { listDocuments, API_BASE_URL } from './services/api'
 
 function App() {
