@@ -68,8 +68,13 @@ def _init_rag_pipeline():
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Startup / shutdown lifecycle."""
-    _init_rag_pipeline()
+    """Startup / shutdown lifecycle.
+    Pipeline init runs in a background thread so the port opens immediately.
+    """
+    import threading
+    thread = threading.Thread(target=_init_rag_pipeline, daemon=True)
+    thread.start()
+    logger.info("Pipeline initialization started in background")
     yield
     logger.info("Shutting down OnboardIQ")
 

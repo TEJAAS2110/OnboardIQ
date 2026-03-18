@@ -2,10 +2,16 @@ import logging
 from typing import List, Dict, Any, Tuple
 from openai import OpenAI
 from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder
 import numpy as np
 from app.config import get_settings
 from app.core.ingestion import IngestionPipeline
+
+# Cross-encoder is optional — requires PyTorch (~2GB RAM)
+try:
+    from sentence_transformers import CrossEncoder
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -23,10 +29,17 @@ class HybridRetriever:
         self.collection = ingestion_pipeline.collection
         self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
-        # Load re-ranker model
-        logger.info("Loading cross-encoder re-ranker…")
-        self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-        logger.info("Re-ranker loaded")
+        # Load re-ranker model (optional — needs lots of RAM)
+        self.reranker = None
+        if RERANKER_AVAILABLE:
+            try:
+                logger.info("Loading cross-encoder re-ranker…")
+                self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+                logger.info("Re-ranker loaded")
+            except Exception as e:
+                logger.warning("Cross-encoder failed to load (likely OOM): %s — skipping re-rank", e)
+        else:
+            logger.info("sentence-transformers not installed — skipping cross-encoder re-ranking")
         
         # Initialize BM25 index
         self._initialize_bm25()
@@ -80,12 +93,19 @@ class HybridRetriever:
         )
         logger.info("Fused results: %d", len(fused_results))
         
-        # Step 4: Re-rank top candidates
-        reranked_results = self._rerank(
-            query,
-            fused_results[:settings.TOP_K_RERANK]
-        )
-        logger.info("Re-ranked: %d", len(reranked_results))
+        # Step 4: Re-rank top candidates (if cross-encoder available)
+        if self.reranker is not None:
+            reranked_results = self._rerank(
+                query,
+                fused_results[:settings.TOP_K_RERANK]
+            )
+            logger.info("Re-ranked: %d", len(reranked_results))
+        else:
+            # Fallback: use RRF scores as final scores
+            reranked_results = fused_results[:settings.TOP_K_RERANK]
+            for r in reranked_results:
+                r['final_score'] = r.get('rrf_score', 0)
+            logger.info("Skipped re-rank (no cross-encoder), using RRF scores: %d", len(reranked_results))
         
         # Return top-k
         return reranked_results[:top_k]
