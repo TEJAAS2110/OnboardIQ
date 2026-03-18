@@ -43,6 +43,11 @@ async def upload_document(file: UploadFile = File(...)):
     """
     Upload and ingest a document into the knowledge base
     """
+    if ingestion_pipeline is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RAG pipeline not initialized. Set OPENAI_API_KEY and restart."
+        )
     # Validate file type
     safe_filename = _sanitize_filename(file.filename)
     file_ext = Path(safe_filename).suffix.lower()
@@ -102,6 +107,12 @@ async def list_documents():
     """
     Get list of all ingested documents
     """
+    if ingestion_pipeline is None:
+        return DocumentListResponse(
+            total_documents=0,
+            total_chunks=0,
+            documents=[]
+        )
     try:
         stats = ingestion_pipeline.get_stats()
         

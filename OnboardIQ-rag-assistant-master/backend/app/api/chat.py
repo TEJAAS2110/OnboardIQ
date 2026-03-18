@@ -28,6 +28,17 @@ async def chat_query(request: ChatRequest):
     try:
         logger.info("New query: %s", request.query[:80])
         
+        if retriever is None or generator is None:
+            return ChatResponse(
+                answer="[DEMO MODE] The RAG pipeline is not initialized. "
+                       "Set OPENAI_API_KEY on the server to enable real answers.",
+                citations=[],
+                confidence=0.0,
+                sources_used=0,
+                retrieved_chunks=0,
+                query=request.query,
+            )
+        
         # Step 1: Retrieve relevant chunks
         retrieved_chunks = retriever.retrieve(request.query, top_k=request.top_k)
         
